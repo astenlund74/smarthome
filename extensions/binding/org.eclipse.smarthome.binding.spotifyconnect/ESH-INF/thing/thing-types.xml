@@ -45,7 +45,7 @@
             <channel id="artistType" typeId="currentlyPlayedArtistType"/>
             <channel id="artistName" typeId="currentlyPlayedArtistName"/>
         </channels>
-       
+   
         <config-description>
             <parameter name="clientId" type="text">
                 <context>clientId</context>
@@ -67,7 +67,7 @@
                 <description>
                     This is the refresh token provided by Spotify when you authorize yourself with the Web API and grant the required scope accesses.
                 </description>
-                <required>true</required>
+                <required>false</required>
             </parameter>
         </config-description>
 

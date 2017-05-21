@@ -175,7 +175,6 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler implements 
 
         if (getConfig().get("clientId") != null) {
             if (spotifySession == null) {
-                // SpotifySession.initialize(clientId, clientSecret, refreshToken);
                 setSpotifySession(SpotifySession.getInstance(this, clientId, clientSecret, refreshToken));
             }
         } else {

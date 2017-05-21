@@ -10,18 +10,10 @@
 		<version>0.9.0-SNAPSHOT</version>
 	</parent>
 
+	<groupId>org.eclipse.smarthome.binding</groupId>
 	<artifactId>org.eclipse.smarthome.binding.spotifyconnect</artifactId>
-	<version>0.9.0-SNAPSHOT</version>
 
 	<name>SpotifyConnect Binding</name>
 	<packaging>eclipse-plugin</packaging>
 
-	<dependencies>
-		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
-			<version>20160810</version>
-		</dependency>
-	</dependencies>
-	<groupId>org.eclipse.smarthome.binding</groupId>
 </project>
