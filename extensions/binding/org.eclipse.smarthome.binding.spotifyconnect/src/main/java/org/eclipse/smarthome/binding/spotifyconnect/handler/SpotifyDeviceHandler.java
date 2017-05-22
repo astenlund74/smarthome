@@ -19,6 +19,7 @@ import org.eclipse.smarthome.core.library.types.NextPreviousType;
 import org.eclipse.smarthome.core.library.types.OnOffType;
 import org.eclipse.smarthome.core.library.types.PlayPauseType;
 import org.eclipse.smarthome.core.library.types.StringType;
+import org.eclipse.smarthome.core.thing.Channel;
 import org.eclipse.smarthome.core.thing.ChannelUID;
 import org.eclipse.smarthome.core.thing.Thing;
 import org.eclipse.smarthome.core.thing.ThingStatus;
@@ -26,6 +27,7 @@ import org.eclipse.smarthome.core.thing.ThingStatusDetail;
 import org.eclipse.smarthome.core.thing.ThingStatusInfo;
 import org.eclipse.smarthome.core.thing.binding.BaseThingHandler;
 import org.eclipse.smarthome.core.types.Command;
+import org.eclipse.smarthome.core.types.State;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,13 +40,13 @@ import org.slf4j.LoggerFactory;
 public class SpotifyDeviceHandler extends BaseThingHandler {
 
     private final Logger logger = LoggerFactory.getLogger(SpotifyDeviceHandler.class);
-    private SpotifyConnectHandler controller = null;
+    private SpotifyConnectHandler player = null;
     private String deviceId;
 
     public SpotifyDeviceHandler(Thing thing) {
         super(thing);
         if (getBridge() != null) {
-            controller = (SpotifyConnectHandler) getBridge().getHandler();
+            player = (SpotifyConnectHandler) getBridge().getHandler();
         }
     }
 
@@ -56,8 +58,8 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
     public void handleCommand(ChannelUID channelUID, Command command) {
         logger.debug("Received channel: {}, command: {}", channelUID, command);
 
-        if (controller == null && getBridge() != null) {
-            controller = (SpotifyConnectHandler) getBridge().getHandler();
+        if (player == null && getBridge() != null) {
+            player = (SpotifyConnectHandler) getBridge().getHandler();
         }
 
         String channel = channelUID.getId();
@@ -68,23 +70,23 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
 
                 if (command instanceof PlayPauseType) {
                     if (command.equals(PlayPauseType.PLAY)) {
-                        controller.playActiveTrack(getDeviceId());
+                        player.getSpotifySession().playActiveTrack(getDeviceId());
                     } else if (command.equals(PlayPauseType.PAUSE)) {
-                        controller.pauseActiveTrack(getDeviceId());
+                        player.getSpotifySession().pauseActiveTrack(getDeviceId());
                     }
                 }
                 if (command instanceof OnOffType) {
                     if (command.equals(OnOffType.ON)) {
-                        controller.playActiveTrack(getDeviceId());
+                        player.getSpotifySession().playActiveTrack(getDeviceId());
                     } else if (command.equals(OnOffType.OFF)) {
-                        controller.pauseActiveTrack(getDeviceId());
+                        player.getSpotifySession().pauseActiveTrack(getDeviceId());
                     }
                 }
                 if (command instanceof NextPreviousType) {
                     if (command.equals(NextPreviousType.NEXT)) {
-                        controller.playActiveTrack(getDeviceId());
+                        player.getSpotifySession().playActiveTrack(getDeviceId());
                     } else if (command.equals(NextPreviousType.PREVIOUS)) {
-                        controller.previousTrack(getDeviceId());
+                        player.getSpotifySession().previousTrack(getDeviceId());
                     }
 
                 }
@@ -94,9 +96,9 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
 
                 if (command instanceof OnOffType) {
                     if (command.equals(OnOffType.ON)) {
-                        controller.setShuffleState(deviceId, "true");
+                        player.getSpotifySession().setShuffleState(deviceId, "true");
                     } else if (command.equals(OnOffType.OFF)) {
-                        controller.setShuffleState(deviceId, "false");
+                        player.getSpotifySession().setShuffleState(deviceId, "false");
                     }
                 }
                 break;
@@ -104,8 +106,8 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
                 logger.debug("CHANNEL_DEVICEVOLUME {}", command.getClass().getName());
                 if (command instanceof DecimalType) {
                     DecimalType volume = (DecimalType) command;
-                    if (controller != null) {
-                        controller.setDeviceVolume(getDeviceId(), volume.intValue());
+                    if (player != null) {
+                        player.getSpotifySession().setDeviceVolume(getDeviceId(), volume.intValue());
                     }
                 }
                 /*
@@ -138,14 +140,15 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
         }
         if (channelUID.getId().equals(CHANNEL_TRACKID)) {
             if (command instanceof StringType) {
-                controller.playTrack(getDeviceId(), ((StringType) command).toString());
+                player.getSpotifySession().playTrack(getDeviceId(), ((StringType) command).toString());
             }
 
         }
 
         if (channelUID.getId().equals(CHANNEL_DEVICESHUFFLE)) {
             if (command instanceof OnOffType) {
-                controller.setShuffleState(getDeviceId(), command.equals(OnOffType.OFF) ? "false" : "true");
+                player.getSpotifySession().setShuffleState(getDeviceId(),
+                        command.equals(OnOffType.OFF) ? "false" : "true");
             }
         }
 
@@ -212,15 +215,24 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
         initialize();
     }
 
+    public void setChannelValue(String CHANNEL, State state) {
+        if (getThing().getStatus().equals(ThingStatus.ONLINE)) {
+            Channel channel = getThing().getChannel(CHANNEL);
+            updateState(channel.getUID(), state);
+            // logger.debug("Updating status of spotify device {} channel {}.", getThing().getLabel(),
+            // channel.getUID());
+        }
+    }
+
     public String getDeviceId() {
         return deviceId;
     }
 
     public SpotifyConnectHandler getController() {
-        return controller;
+        return player;
     }
 
     public void setController(SpotifyConnectHandler controller) {
-        this.controller = controller;
+        this.player = controller;
     }
 }

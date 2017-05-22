@@ -1,16 +1,15 @@
 package org.eclipse.smarthome.binding.spotifyconnect.internal;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.util.Base64;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
@@ -20,16 +19,17 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.smarthome.binding.spotifyconnect.handler.SpotifyConnectHandler;
-import org.eclipse.smarthome.core.thing.Thing;
+import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifySession.SpotifyWebAPIAuthResult;
 import org.eclipse.smarthome.core.thing.ThingRegistry;
-import org.eclipse.smarthome.io.net.http.HttpUtil;
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.osgi.service.http.HttpContext;
 import org.osgi.service.http.HttpService;
 import org.osgi.service.http.NamespaceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.gson.Gson;
+import com.google.gson.annotations.Expose;
+import com.google.gson.annotations.SerializedName;
 
 public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthService {
 
@@ -52,11 +52,9 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
 
     private ThingRegistry thingRegistry;
     protected HttpService httpService;
-    protected SpotifyConnectHandler handler;
-    protected SpotifyPlayer player;
+    protected List<SpotifyConnectHandler> handlers = new ArrayList<SpotifyConnectHandler>();
+    protected Map<String, SpotifyConnectHandler> cookieHandler = new HashMap<String, SpotifyConnectHandler>();
 
-    private String clientId = "c9797fd503c246399bed61ec32b77ca0";
-    private String clientSecret = "fe67d85fe4ca4573b005de4f197d307b";
     private String callbackUrl = "http://localhost:8080" + CALLBACK_ALIAS;
 
     final String stateKey = "spotify_auth_state";
@@ -97,21 +95,8 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         logger.debug("Spotify auth callback servlet received GET request {}.", req.getRequestURI());
 
         final Map<String, String> queryStrs = splitQuery(req.getQueryString());
-
-        /*
-         * GET https://accounts.spotify.com/authorize/
-         * ?client_id=5fe01282e44241328a84e7c5cc169165
-         * &response_type=code
-         * &redirect_uri=https%3A%2F%2Fexample.com%2Fcallback
-         * &scope=user-read-private%20user-read-email&state=34fFs29kd09
-         *
-         * var scope = 'playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private
-         * streaming user-follow-modify user-follow-read user-library-read user-library-modify user-read-private
-         * user-read-birthdate user-read-email user-top-read user-read-playback-state user-read-recently-played
-         * user-modify-playback-state user-read-currently-playing ';
-         */
-
         final String url = req.getRequestURI();
+
         if (url.startsWith(WEBAPP_ALIAS)) {
             super.doGet(req, resp);
         } else if (url.equals(SERVLET_NAME + "/")) {
@@ -142,115 +127,100 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
                         "Spotify auth callback servlet received GET /authorize request without matching state {} != {}.",
                         reqState, state.getValue());
             } else {
-                // Callback request OK - initiate authorization process.
-                final String authString = Base64.getEncoder()
-                        .encodeToString(String.format("%s:%s", clientId, clientSecret).getBytes());
-                Properties headers = new Properties();
-                headers.setProperty("Authorization", String.format("Basic %s", authString));
+                SpotifyConnectHandler authHandler = cookieHandler.get(state.getValue());
 
-                String content = String.format("grant_type=authorization_code&code=%s&redirect_uri=%s", reqCode,
-                        URLEncoder.encode(callbackUrl, "UTF-8"));
-                ByteArrayInputStream contentStream = new ByteArrayInputStream(content.getBytes());
-                String contentType = "application/x-www-form-urlencoded";
-                String response = null;
-                try {
-                    response = HttpUtil.executeUrl("POST", "https://accounts.spotify.com/api/token", headers,
-                            contentStream, contentType, 5000);
-                } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                    logger.debug("Exception while refreshing token", e);
+                if (authHandler != null) {
+                    SpotifyWebAPIAuthResult result = authHandler.getSpotifySession().authenticate(callbackUrl, reqCode);
 
-                }
-                logger.debug("Response: {}", response);
+                    String clientId = (String) authHandler.getThing().getConfiguration().get("clientId");
+                    String clientSecret = (String) authHandler.getThing().getConfiguration().get("clientSecret");
+                    resp.setContentType("text/html");
+                    resp.setCharacterEncoding("UTF-8");
+                    resp.setStatus(200);
 
-                try {
-                    JSONObject obj = new JSONObject(response);
-                    if (obj.has("error")) {
-                        String error = obj.getString("error");
-                        String errorDesc = obj.getString("error_description");
-                        logger.error("Error when authorizing - {} : {}", error, errorDesc);
-                    } else {
-                        String accessToken = obj.getString("access_token");
-                        String tokenType = obj.getString("token_type");
-                        String refreshToken = obj.getString("refresh_token");
-                        int tokenValidity = obj.getInt("expires_in");
-                        String scope = obj.getString("scope");
+                    PrintWriter wrout = resp.getWriter();
+                    wrout.println(
+                            "<html><head><title>Authenticated: Eclipse Smarthome Spotify Connect Bridge</title></head><body>");
+                    wrout.println("<h1>Authenticated with Spotify!</h1>");
+                    wrout.println("<p>Client ID: <b>" + clientId + "</b></p>");
+                    wrout.println("<p>Client Secret: <b>" + clientSecret + "</b></p>");
+                    wrout.println("<p>Access Token: <b>" + result.getAccessToken() + "</b></p>");
+                    wrout.println("<p>Refresh Token: <b>" + result.getRefreshToken() + "</b><p>");
+                    wrout.println("<p>Token Type: <b>" + result.getTokenType() + "</b></p>");
+                    wrout.println("<p>Validity: <b>" + result.getExpiresIn() + "</b> seconds</p>");
+                    wrout.println("<p>Allowed scopes: <b>" + result.getScope() + "</b></p>");
 
-                        resp.setContentType("text/html");
-                        resp.setCharacterEncoding("UTF-8");
-                        resp.setStatus(200);
+                    String scheme = req.getScheme();
+                    String host = req.getServerName();
+                    int port = req.getServerPort();
 
-                        PrintWriter wrout = resp.getWriter();
-                        wrout.println(
-                                "<html><head><title>Authenticate OpenHab Spotify Connect Bridge</title></head><body>");
-                        wrout.println("<h1>Authenticated with Spotify</h1>");
-                        wrout.println("<p>Client ID: <b>" + clientId + "</b></p>");
-                        wrout.println("<p>Client Secret: <b>" + clientSecret + "</b></p>");
-                        wrout.println("<p>Access Token: <b>" + accessToken + "</b></p>");
-                        wrout.println("<p>Refresh Token: <b>" + refreshToken + "</b><p>");
-                        wrout.println("<p>Token Type: <b>" + tokenType + "</b></p>");
-                        wrout.println("<p>Validity: <b>" + tokenValidity + "</b> seconds</p>");
-                        wrout.println("<p>Allowed scopes: <b>" + scope + "</b></p>");
+                    wrout.println("<p><a href=\"" + scheme + "://" + host + ":" + port + SERVLET_NAME
+                            + "/\">Back to start page<a/></p>");
+                    wrout.println("</body></html>");
+                    wrout.flush();
 
-                        wrout.println("<h2>Known Spotify Things:</h2>");
+                    authHandler.initializeSession(clientId, clientSecret, result.getRefreshToken());
+                    handlers.remove(authHandler);
 
-                        SpotifyConnectHandler handler = null;
-                        for (Thing thing : thingRegistry.getAll()) {
-                            // if
-                            // (!thing.getThingTypeUID().getBindingId().equals(SpotifyConnectBindingConstants.BINDING_ID))
-                            // {
-                            // continue;
-                            // }
-
-                            if (thing.getHandler() instanceof SpotifyConnectHandler) {
-
-                                handler = (SpotifyConnectHandler) thing.getHandler();
-
-                                wrout.println("<p>" + thing.getLabel() + ":" + thing.getThingTypeUID() + " : "
-                                        + thing.getStatus() + "</p>");
-
-                            }
-
-                        }
-
-                        wrout.println("</body></html>");
-                        wrout.flush();
-
-                        if (handler != null) {
-                            handler.initializeSession(clientId, clientSecret, refreshToken);
-                        }
-                    }
-                } catch (JSONException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                    logger.debug("Error refreshing spotify web api token!", e);
+                } else {
+                    RequestDispatcher dispatcher = getServletContext()
+                            .getRequestDispatcher(WEBAPP_ALIAS + "/unkownHandler.html");
+                    dispatcher.forward(req, resp);
                 }
 
             }
+        } else if (url.equals(SERVLET_NAME + "/list")) {
+            logger.debug("Spotify auth callback servlet received GET /list request");
+            List<Player> players = new ArrayList<Player>();
+            for (SpotifyConnectHandler handler : handlers) {
+                Player player = new Player();
+                player.setId(handler.getThing().getUID().getAsString());
+                player.setLabel(handler.getThing().getLabel());
+                player.setClientId((String) handler.getThing().getConfiguration().get("clientId"));
+                players.add(player);
+            }
+            Gson gson = new Gson();
+            PrintWriter wrout = resp.getWriter();
+            wrout.println(gson.toJson(players));
 
         } else if (url.equals(SERVLET_NAME + "/login")) {
-            logger.debug("Spotify auth callback servlet received GET /login request.");
+            String spotifyHandlerId = req.getParameter("playerId");
 
-            final String stateValue = generateRandomStateString(16);
-            Cookie state = new Cookie(stateKey, stateValue);
-            resp.addCookie(state);
+            logger.debug("Spotify auth callback servlet received GET /login request for {}.", spotifyHandlerId);
 
-            String reqScope = new String();
-            for (String scope : scopes) {
-                reqScope += scope + "%20";
+            SpotifyConnectHandler authHandler = null;
+            for (SpotifyConnectHandler handler : handlers) {
+                if (handler.getThing().getUID().getAsString().equals(spotifyHandlerId)) {
+                    authHandler = handler;
+                    break;
+                }
             }
 
-            /*
-             * String queryString = String.format("client_id=%s&response_type=code&redirect_uri=%s&state=%s&scope=%s",
-             * clientId, URLEncoder.encode(callbackUrl, "UTF-8"), stateValue,
-             * URLEncoder.encode(reqScope, "UTF-8"));
-             */
-            String queryString = String.format("client_id=%s&response_type=code&redirect_uri=%s&state=%s&scope=%s",
-                    clientId, URLEncoder.encode(callbackUrl, "UTF-8"), stateValue, reqScope);
+            if (authHandler != null) {
 
-            resp.sendRedirect(String.format("https://accounts.spotify.com/authorize/?%s", queryString));
+                final String stateValue = generateRandomStateString(16);
+                Cookie state = new Cookie(stateKey, stateValue);
+                resp.addCookie(state);
 
+                cookieHandler.put(stateValue, authHandler);
+
+                String reqScope = new String();
+                for (String scope : scopes) {
+                    reqScope += scope + "%20";
+                }
+
+                String clientId = (String) authHandler.getThing().getConfiguration().get("clientId");
+
+                String queryString = String.format("client_id=%s&response_type=code&redirect_uri=%s&state=%s&scope=%s",
+                        clientId, URLEncoder.encode(callbackUrl, "UTF-8"), stateValue, reqScope);
+
+                resp.sendRedirect(String.format("https://accounts.spotify.com/authorize/?%s", queryString));
+            } else {
+                RequestDispatcher dispatcher = getServletContext()
+                        .getRequestDispatcher(WEBAPP_ALIAS + "/unkownHandler.html");
+                dispatcher.forward(req, resp);
+
+            }
         }
     }
 
@@ -286,16 +256,9 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
 
     @Override
     public void authenticateSpotifyPlayer(SpotifyConnectHandler handler) {
-        this.handler = handler;
-
-    }
-
-    public void setSpotifyPlayer(SpotifyPlayer player) {
-        this.player = player;
-    }
-
-    public void removeSpotifyPlayer(SpotifyPlayer player) {
-        this.player = null;
+        if (!handlers.contains(handler)) {
+            handlers.add(handler);
+        }
     }
 
     protected void setThingRegistry(ThingRegistry thingRegistry) {
@@ -304,5 +267,57 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
 
     protected void unsetThingRegistry(ThingRegistry thingRegistry) {
         this.thingRegistry = null;
+    }
+
+    public class Player {
+        @SerializedName("id")
+        @Expose
+        private String id;
+        @SerializedName("label")
+        @Expose
+        private String label;
+        @SerializedName("clientId")
+        @Expose
+        private String clientId;
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public void setLabel(String label) {
+            this.label = label;
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId;
+        }
+    }
+
+    public class Players {
+
+        @SerializedName("player")
+        @Expose
+        private List<Player> players = null;
+
+        public List<Player> getPlayers() {
+            return players;
+        }
+
+        public void setPlayers(List<Player> players) {
+            this.players = players;
+        }
+
     }
 }

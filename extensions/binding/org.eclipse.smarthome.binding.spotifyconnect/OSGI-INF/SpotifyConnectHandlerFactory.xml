@@ -12,7 +12,7 @@
 <scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.1.0" immediate="true" name="binding.spotifyconnect">
 
 	<implementation class="org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifyConnectHandlerFactory"/>
-    <reference cardinality="0..n" interface="org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifyAuthService" name="SpotifyAuthService" policy="dynamic" bind="addAuthServlet" unbind="removeAuthServlet"  />
+    <reference cardinality="0..n" interface="org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifyAuthService" name="SpotifyAuthService" policy="dynamic" bind="bindAuthService" unbind="unbindAuthService"  />
 
    
 	<service>

@@ -4,7 +4,22 @@ This binding implements a bridge to the Spotify Connect Player Web API and makes
 
 The binding requires you to register an Application with Spotify Web API on https://developer.spotify.com 
 
-_If possible, provide some resources like pictures, a YouTube video, etc. to give an impression of what can be done with this binding. You can place such resources into a `doc` folder next to this README.md._
+When registering your new Spotify Application for Eclipe Smarthome Spotify Connect Bridge you have to specify the allowed "Redirect URIs" aka white-listed addresses. Here you have to specify the address to you Eclipse Smarthome server. 
+
+If you run it on the local machine with default settings you add "http://localhost:8080/connectspotify/authorize" to the Redirect URIs. The authentication process takes place using your client web browser so this Redirect URI is where the Eclipse Smarthome or OpenHAB web UI is.
+
+Steps required to get this binding running:
+0. Install bind and make sure the Spotify Connect things are available on your server
+1. Register on https://developer.spotify.com with your Spotify Premium Account
+2. Add a new Application. Add Redirect URI for Eclipse Smarthome. We need the "Client ID" and "Client Secret" to add a new binding.
+3. Goto to your favourite admin UI and add a new Thing. Select "Spotify Connect Player Bridge". Choose new Id for the player, unless you like the generated one, put in the Client ID and Client Secret from the Spotify Application registration. You can leave the refreshPeriod and refreshToken as is. Save.
+4. The bridge thing will stay in INITIALIZING and eventually go OFFLINE. This is fine. You have to authenticate this bridge with Spotify.
+5. Go to the rather simplistic authentication page: "http://localhost:8080/connectspotify/". You newly added bridge should be listed there.
+6. Press the Authenticate button. This should take you either to the login page of Spotify or directly to the authorization screen. Login and/or authorize the application. You will be returned to a results page with all technical identifiers for you to enjoy.
+7. The binding will now be updated with a refreshToken and go ONLINE. The refreshToken is used to re-authenticate the bridge with Spotify Connect WebAPI whenever required. An authentication token is valid for an hour so there is re-authentication timer running.
+8. Now that you have got your bridge ONLINE it is time to discover your device! Go to inbox and search for Spotify Player Devices. Anything active should show up. Start Spotify client on your PC/Mac/iOS/Android and start playing on your devices as you run discovery. You may have to trigger serveral times.
+
+Should the bridge configuration be ruined for any reason, the authentication procedure can be reinitiated from 5 whenever required. You only have to remove the refreshToken of the bridge configuraion, make sure Client ID and Client Secret are correct, and press save.
 
 ## Supported Things
 
@@ -12,38 +27,85 @@ All Spotify Connect capable devices should be discoverable through this binding.
 
 ## Discovery
 
-_Describe the available auto-discovery features here. Mention for what it works and what needs to be kept in mind when using it._
-
-## Binding Configuration
-
-_If your binding requires or supports general configuration settings, please create a folder ```cfg``` and place the configuration file ```<bindingId>.cfg``` inside it. In this section, you should link to this file and provide some information about the options. The file could e.g. look like:_
-
-```
-# Configuration for the Philips Hue Binding
-#
-# Default secret key for the pairing of the Philips Hue Bridge.
-# It has to be between 10-40 (alphanumeric) characters 
-# This may be changed by the user for security reasons.
-secret=EclipseSmartHome
-```
-
-_Note that it is planned to generate some part of this based on the information that is available within ```ESH-INF/binding``` of your binding._
-
-_If your binding does not offer any generic configurations, you can remove this section completely._
-
-## Thing Configuration
-
-_Describe what is needed to manually configure a thing, either through the (Paper) UI or via a thing-file. This should be mainly about its mandatory and optional configuration parameters. A short example entry for a thing file can help!_
-
-_Note that it is planned to generate some part of this based on the XML files within ```ESH-INF/thing``` of your binding._
+As long as Spotify Connect devices are available on your (on your servers) network they should show up.
 
 ## Channels
 
-_Here you should provide information about available channel types, what their meaning is and how they can be used._
-
-_Note that it is planned to generate some part of this based on the XML files within ```ESH-INF/thing``` of your binding._
+_TODO_
 
 ## Full Example
+
+This is a roughly what I have used to test the binding. Auto created items for all channels. I added items in files for the Player channel. Don't know how to set it upp in sitemap under basicui. So I mapped a simple Switch to the Player channel and referenced that from the sitemap to start/stop playing. The channel supports stepping tracks forward/backward.
+
+spotify.items:
+Switch device1Play  {channel="spotifyconnect:device:xxx:3b4...ed4:devicePlay"}
+Switch device2Play  {channel="spotifyconnect:device:xxx:abc...123:devicePlay"}
+
+spotify.sitemap
+sitemap demo label="Demo Sitemap" {
+     
+    Frame label="Spotify Player Info" {
+        Text item=spotifyconnect_player_xxx_trackPlayer label="Currently Player operation: [%s]"
+        Text item=spotifyconnect_player_xxx_trackRepeat label="Currently Player repeat mode: [%s]"
+        Text item=spotifyconnect_player_xxx_trackShuffle label="Currently Player shuffle mode: [%s]"
+        Text item=spotifyconnect_player_xxx_trackPopularity label="Currently Played track popularity: [%s]"
+        Text item=spotifyconnect_player_xxx_trackProgress label="Currently Played track progress: [%s ms]"
+        Text item=spotifyconnect_player_xxx_trackDuration label="Currently Played track duration: [%s ms]"
+    }       
+    
+    Frame label="Spotify Track Info" {
+        Text item=spotifyconnect_player_xxx_trackId label="Currently Played Track Id: [%s]"
+        Text item=spotifyconnect_player_xxx_trackHref label="Currently Played Track href: [%s]"
+        Text item=spotifyconnect_player_xxx_trackUri label="Currently Played Track Uri: [%s]"
+        Text item=spotifyconnect_player_xxx_trackName label="Currently Played Track Name: [%s]"
+        Text item=spotifyconnect_player_xxx_trackType label="Currently Played Track Type: [%s]"
+        Text item=spotifyconnect_player_xxx_trackNumber label="Currently Played Track Number: [%s]"
+        Text item=spotifyconnect_player_xxx_trackDiscNumber label="Currently Played Track Disc Number: [%s]"
+    }       
+    Frame label="Spotify Album Info" {
+        Text item=spotifyconnect_player_xxx_albumId label="Currently Played Album Id: [%s]"
+        Text item=spotifyconnect_player_xxx_albumHref label="Currently Played Album href: [%s]"
+        Text item=spotifyconnect_player_xxx_albumUri label="Currently Played Album Uri: [%s]"
+        Text item=spotifyconnect_player_xxx_albumName label="Currently Played Album Name: [%s]"
+        Text item=spotifyconnect_player_xxx_albumType label="Currently Played Album Type: [%s]"
+    }       
+    Frame label="Spotify Artist Info" {
+        Text item=spotifyconnect_player_xxx_artistId label="Currently Played Artist Id: [%s]"
+        Text item=spotifyconnect_player_xxx_artistHref label="Currently Played Artist href: [%s]"
+        Text item=spotifyconnect_player_xxx_artistUri label="Currently Played Artist Uri: [%s]"
+        Text item=spotifyconnect_player_xxx_artistName label="Currently Played Artist Name: [%s]"
+        Text item=spotifyconnect_player_xxx_artistType label="Currently Played Artist Type: [%s]"
+    }       
+
+    Frame label="My Spotify Device 1" {
+        Selection item=spotifyconnect_device_xxx_3b4....ed4_trackId label="Playlist" icon="music" mappings=[
+        "spotify:user:spotify:playlist:37i9dQZF1DXdd3gw5QVjt9"="Morning Acoustic",
+        "spotify:user:spotify:playlist:37i9dQZEVXcMncpo9bdBsj"="Discover Weekly",
+        ]
+        Text item=spotifyconnect_device_xxx_3b4...ed4_deviceId label="Device Id [%s]"
+        Text item=spotifyconnect_device_xxx_3b4...ed4_deviceType label="Device Type [%s]"
+        Text item=spotifyconnect_device_xxx_3b4...ed4_deviceName label="Device Name [%s]"
+        Switch item=spotifyconnect_device_xxx_3b4...ed4_deviceActive
+        Switch item=device1Play
+        Slider item=spotifyconnect_device_xxx_3b4...ed4_deviceVolume
+        Switch item=spotifyconnect_device_xxx_3b4...ed4_deviceShuffle
+    }    
+
+    Frame label="My Spotify Device 2" {
+        Selection item=spotifyconnect_device_xxx_abc....123_trackId label="Playlist" icon="music" mappings=[
+        "spotify:user:spotify:playlist:37i9dQZF1DXdd3gw5QVjt9"="Morning Acoustic",
+        "spotify:user:spotify:playlist:37i9dQZEVXcMncpo9bdBsj"="Discover Weekly",
+        ]
+        Text item=spotifyconnect_device_xxx_abc...123_deviceId label="Device Id [%s]"
+        Text item=spotifyconnect_device_xxx_abc...123_deviceType label="Device Type [%s]"
+        Text item=spotifyconnect_device_xxx_abc...123_deviceName label="Device Name [%s]"
+        Switch item=spotifyconnect_device_xxx_abc...123_deviceActive
+        Switch item=device2Play
+        Slider item=spotifyconnect_device_xxx_abc...123_deviceVolume
+        Switch item=spotifyconnect_device_xxx_abc...123_deviceShuffle
+    }    
+
+}
 
 _Provide a full usage example based on textual configuration files (*.things, *.items, *.sitemap)._
 

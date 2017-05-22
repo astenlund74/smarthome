@@ -48,7 +48,7 @@ public class SpotifyConnectHandlerFactory extends BaseThingHandlerFactory {
         ThingTypeUID thingTypeUID = thing.getThingTypeUID();
 
         if (thingTypeUID.equals(SpotifyConnectBindingConstants.THING_TYPE_PLAYER)) {
-            return new SpotifyConnectHandler((Bridge) thing);
+            return new SpotifyConnectHandler((Bridge) thing, this);
         }
         if (thingTypeUID.equals(SpotifyConnectBindingConstants.THING_TYPE_DEVICE)) {
             return new SpotifyDeviceHandler(thing);
@@ -57,11 +57,11 @@ public class SpotifyConnectHandlerFactory extends BaseThingHandlerFactory {
         return null;
     }
 
-    public void addAuthService(SpotifyAuthService service) {
+    public void bindAuthService(SpotifyAuthService service) {
         this.authService = service;
     }
 
-    public void removeAuthService(SpotifyAuthService service) {
+    public void unbindAuthService(SpotifyAuthService service) {
         this.authService = null;
     }
 }
