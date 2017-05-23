@@ -16,6 +16,7 @@ import org.eclipse.smarthome.config.core.Configuration;
 import org.eclipse.smarthome.core.library.types.DecimalType;
 import org.eclipse.smarthome.core.library.types.NextPreviousType;
 import org.eclipse.smarthome.core.library.types.OnOffType;
+import org.eclipse.smarthome.core.library.types.PercentType;
 import org.eclipse.smarthome.core.library.types.PlayPauseType;
 import org.eclipse.smarthome.core.library.types.StringType;
 import org.eclipse.smarthome.core.thing.Channel;
@@ -61,6 +62,10 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
             player = (SpotifyConnectHandler) getBridge().getHandler();
         }
 
+        if (player != null) {
+            return;
+        }
+
         String channel = channelUID.getId();
 
         switch (channel) {
@@ -102,38 +107,15 @@ public class SpotifyDeviceHandler extends BaseThingHandler {
                 }
                 break;
             case CHANNEL_DEVICEVOLUME:
-                logger.debug("CHANNEL_DEVICEVOLUME {}", command.getClass().getName());
                 if (command instanceof DecimalType) {
-                    DecimalType volume = (DecimalType) command;
-                    if (player != null) {
-                        player.getSpotifySession().setDeviceVolume(getDeviceId(), volume.intValue());
-                    }
+                    PercentType volume = new PercentType(((DecimalType) command).intValue());
+                    player.getSpotifySession().setVolume(volume.intValue());
+                    setChannelValue(CHANNEL_DEVICEVOLUME, volume);
+                } else if (command instanceof PercentType) {
+                    PercentType volume = (PercentType) command;
+                    player.getSpotifySession().setVolume(volume.intValue());
+                    setChannelValue(CHANNEL_DEVICEVOLUME, volume);
                 }
-                /*
-                 * if (command instanceof RefreshType) {
-                 * String jsonData = controller.listDevices();
-                 * JSONObject jsonObj = null;
-                 * JSONArray devices = null;
-                 * try {
-                 * jsonObj = new JSONObject(jsonData);
-                 * devices = jsonObj.getJSONArray("devices");
-                 *
-                 * if (devices != null && devices.length() > 0) {
-                 * for (int i = 0; i < devices.length(); i++) {
-                 * String id = devices.getJSONObject(i).getString("id");
-                 * if (id.equals(getDeviceId())) {
-                 * int volumePercent = devices.getJSONObject(i).getInt("volume_percent");
-                 * updateState(channelUID, new DecimalType(volumePercent));
-                 * }
-                 * }
-                 * }
-                 * } catch (JSONException e) {
-                 * // TODO Auto-generated catch block
-                 * e.printStackTrace();
-                 * }
-                 *
-                 * }
-                 */
                 break;
 
         }

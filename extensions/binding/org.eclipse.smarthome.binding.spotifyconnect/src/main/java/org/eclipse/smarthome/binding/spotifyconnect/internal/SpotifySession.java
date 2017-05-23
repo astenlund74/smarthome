@@ -8,6 +8,7 @@
 package org.eclipse.smarthome.binding.spotifyconnect.internal;
 
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -42,6 +43,9 @@ import com.google.gson.annotations.SerializedName;
 public class SpotifySession implements Runnable {
 
     private final Logger logger = LoggerFactory.getLogger(SpotifySession.class);
+
+    final int HTTP_CLIENT_RETRY_COUNT = 5;
+    final int HTTP_CLIENT_TIMEOUT = 20;
 
     // Instantiate and configure the SslContextFactory
     private SslContextFactory sslContextFactory = new SslContextFactory();
@@ -103,7 +107,10 @@ public class SpotifySession implements Runnable {
     }
 
     /**
-     * Call the Spotify WebAPI to perform step 7 in the authorization flow.
+     * Call the Spotify WebAPI to authorize client and retrieve access and refresh tokens.
+     *
+     * This is step 6 in Spotify Web API authorization code flow.
+     * See https://developer.spotify.com/web-api/authorization-guide/#authorization-code-flow
      *
      * @param callbackUrl
      * @param reqCode
@@ -114,69 +121,90 @@ public class SpotifySession implements Runnable {
         final String authString = Base64.getEncoder()
                 .encodeToString(String.format("%s:%s", clientId, clientSecret).getBytes());
 
-        logger.debug("Spotfy API request..");
+        logger.debug("Sending Spotify Web API autorization request");
 
         String content = String.format("grant_type=authorization_code&code=%s&redirect_uri=%s", reqCode, callbackUrl);
 
         String contentType = "application/x-www-form-urlencoded";
 
-        ContentResponse response = null;
-        try {
+        for (int i = 0; i < HTTP_CLIENT_RETRY_COUNT; i++) {
+            try {
+                ContentResponse response = httpClient.POST("https://accounts.spotify.com/api/token")
+                        .header("Authorization", "Basic " + authString)
+                        .content(new StringContentProvider(content), contentType)
+                        .timeout(HTTP_CLIENT_TIMEOUT, TimeUnit.SECONDS).send();
 
-            response = httpClient.POST("https://accounts.spotify.com/api/token")
-                    .header("Authorization", "Basic " + authString)
-                    .content(new StringContentProvider(content), contentType).timeout(10, TimeUnit.SECONDS).send();
+                logger.debug("Response Code: {}", response.getStatus());
 
-            logger.debug("Response: {}", response.getContentAsString());
+                if (response.getStatus() == 429) {
+                    String retryAfter = response.getHeaders().get("Retry-After");
+                    logger.warn(
+                            "Spotify Web API returned code 429 (rate limit exceeded). Retry After {} seconds. Decrease polling interval of bridge! Going to sleep...",
+                            retryAfter);
 
-            Gson gson = new Gson();
-            SpotifyWebAPIAuthResult test = gson.fromJson(response.getContentAsString(), SpotifyWebAPIAuthResult.class);
-            accessToken = test.accessToken;
-            tokenValidity = test.getExpiresIn();
-            return test;
+                    Thread.sleep(Integer.parseInt(retryAfter) * 1000);
+                }
 
-        } catch (InterruptedException | TimeoutException | ExecutionException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-            logger.debug("Error refreshing spotify web api token!", e1);
+                Gson gson = new Gson();
+                SpotifyWebAPIAuthResult test = gson.fromJson(response.getContentAsString(),
+                        SpotifyWebAPIAuthResult.class);
+                accessToken = test.accessToken;
+                tokenValidity = test.getExpiresIn();
+                return test;
+
+            } catch (InterruptedException | TimeoutException | ExecutionException e) {
+                logger.debug("Error calling Spotify Web API for authorization - no accessToken!", e);
+            }
+            logger.debug("Attempt {} failed.", i);
         }
+        logger.error("Giving up on accessing Spotify WebAPI. Check network connectivity!");
         return null;
     }
 
     /**
      * Call WebAPI to get accessToken using the refreshToken.
      *
-     * This is step 7 of the Spotify WebAPI authorization flow
+     * This is step 7 of the Spotify WebAPI authorization code flow
      * See https://developer.spotify.com/web-api/authorization-guide/#authorization-code-flow
      */
     private void refreshToken() {
         final String authString = Base64.getEncoder()
                 .encodeToString(String.format("%s:%s", clientId, clientSecret).getBytes());
-        logger.debug("Spotfy API request..");
+        logger.debug("Sending Spotify Web API token refresh request");
 
         String content = "grant_type=refresh_token&refresh_token=" + refreshToken;
         String contentType = "application/x-www-form-urlencoded";
 
-        ContentResponse response = null;
-        try {
-            String url = "https://accounts.spotify.com/api/token";
-            // String url = "http://localhost:8081/api/token";
-            response = httpClient.POST(url).header("Authorization", "Basic " + authString)
-                    .content(new StringContentProvider(content), contentType).timeout(10, TimeUnit.SECONDS).send();
+        for (int i = 0; i < HTTP_CLIENT_RETRY_COUNT; i++) {
+            try {
+                String url = "https://accounts.spotify.com/api/token";
+                ContentResponse response = httpClient.POST(url).header("Authorization", "Basic " + authString)
+                        .content(new StringContentProvider(content), contentType)
+                        .timeout(HTTP_CLIENT_TIMEOUT, TimeUnit.SECONDS).send();
 
-            logger.debug("Response: {}", response.getContentAsString());
+                logger.debug("Response Code: {}", response.getStatus());
 
-            Gson gson = new Gson();
-            SpotifyWebAPIRefreshResult test = gson.fromJson(response.getContentAsString(),
-                    SpotifyWebAPIRefreshResult.class);
-            accessToken = test.accessToken;
-            tokenValidity = test.getExpiresIn();
+                if (response.getStatus() == 429) {
+                    String retryAfter = response.getHeaders().get("Retry-After");
+                    logger.warn(
+                            "Spotify Web API returned code 429 (rate limit exceeded). Retry After {} seconds. Decrease polling interval of bridge! Going to sleep...",
+                            retryAfter);
 
-        } catch (InterruptedException | TimeoutException | ExecutionException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-            logger.debug("Error refreshing spotify web api token!", e1);
+                    Thread.sleep(Integer.parseInt(retryAfter) * 1000);
+                }
+
+                Gson gson = new Gson();
+                SpotifyWebAPIRefreshResult test = gson.fromJson(response.getContentAsString(),
+                        SpotifyWebAPIRefreshResult.class);
+                accessToken = test.accessToken;
+                tokenValidity = test.getExpiresIn();
+                return;
+            } catch (InterruptedException | TimeoutException | ExecutionException e) {
+                logger.debug("Error calling Spotify Web API for token refresh - no accessToken!", e);
+            }
+            logger.debug("Attempt {} failed.", i);
         }
+        logger.error("Giving up on accessing Spotify WebAPI. Check network connectivity!");
     }
 
     /**
@@ -204,7 +232,7 @@ public class SpotifySession implements Runnable {
         // TODO: Find a more suitable to retrieve token validity if it changes after being scheduled? Scheduling refresh
         // 10 seconds before expiring.
         tokenValidity -= 10;
-        future = scheduledExecutorService.scheduleAtFixedRate(this, tokenValidity, tokenValidity, TimeUnit.SECONDS);
+        future = scheduledExecutorService.scheduleWithFixedDelay(this, tokenValidity, tokenValidity, TimeUnit.SECONDS);
 
         return true;
     }
@@ -214,6 +242,53 @@ public class SpotifySession implements Runnable {
         spotifyPlayer.setChannelValue(SpotifyConnectBindingConstants.CHANNEL_REFRESHTOKEN, OnOffType.ON);
         refreshToken();
         spotifyPlayer.setChannelValue(SpotifyConnectBindingConstants.CHANNEL_REFRESHTOKEN, OnOffType.OFF);
+    }
+
+    /**
+     * This method is a simple wrapper for Spotify WebAPI calls
+     *
+     * @param method the http method to use (GET, PUT, POST ..)
+     * @param url the WebAPI url to call
+     * @param requestData the body of the request, if any.
+     * @return response from call
+     */
+    private String callWebAPI(String method, String url, String requestData) {
+
+        Properties headers = new Properties();
+        headers.setProperty("Authorization", "Bearer " + accessToken);
+        headers.setProperty("Accept", "application/json");
+
+        String contentType = "application/json";
+        ContentResponse response = null;
+
+        // TODO: manage http timeout exceptions in a better way, currently crash the polling thread
+        for (int i = 0; i < HTTP_CLIENT_RETRY_COUNT; i++) {
+            try {
+                response = httpClient.newRequest(url).method(HttpMethod.fromString(method))
+                        .header("Authorization", "Bearer " + accessToken).header("Accept", "application/json")
+                        .content(new StringContentProvider(requestData), contentType)
+                        .timeout(HTTP_CLIENT_TIMEOUT, TimeUnit.SECONDS).send();
+
+                logger.debug("Response Code: {}", response.getStatus());
+
+                if (response.getStatus() == 429) {
+                    String retryAfter = response.getHeaders().get("Retry-After");
+                    logger.warn(
+                            "Spotify Web API returned code 429 (rate limit exceeded). Retry After {} seconds. Decrease polling interval of bridge! Going to sleep...",
+                            retryAfter);
+
+                    Thread.sleep(Integer.parseInt(retryAfter));
+                }
+
+                return response.getContentAsString();
+            } catch (InterruptedException | TimeoutException | ExecutionException e) {
+                logger.error("Error refreshing spotify web api token!", e);
+            }
+            logger.debug("Attempt {} failed.", i);
+
+        }
+        logger.error("Giving up on accessing Spotify WebAPI. Check network connectivity!");
+        return new String();
     }
 
     /*
@@ -304,6 +379,9 @@ public class SpotifySession implements Runnable {
         String result = callWebAPI("GET", url, "");
         Gson gson = new Gson();
         SpotifyWebAPIDeviceList deviceList = gson.fromJson(result, SpotifyWebAPIDeviceList.class);
+        if (deviceList == null || deviceList.getDevices() == null) {
+            return Collections.emptyList();
+        }
         return deviceList.getDevices();
     }
 
@@ -313,41 +391,6 @@ public class SpotifySession implements Runnable {
         Gson gson = new Gson();
         SpotifyWebAPIPlayerInfo playerInfo = gson.fromJson(result, SpotifyWebAPIPlayerInfo.class);
         return playerInfo;
-    }
-
-    /**
-     * This method is a simple wrapper for Spotify WebAPI calls
-     *
-     * @param method the http method to use (GET, PUT, POST ..)
-     * @param url the WebAPI url to call
-     * @param requestData the body of the request, if any.
-     * @return response from call
-     */
-    private String callWebAPI(String method, String url, String requestData) {
-
-        Properties headers = new Properties();
-        headers.setProperty("Authorization", "Bearer " + accessToken);
-        headers.setProperty("Accept", "application/json");
-
-        String contentType = "application/json";
-        ContentResponse response = null;
-
-        try {
-            response = httpClient.newRequest(url).method(HttpMethod.fromString(method))
-                    .header("Authorization", "Bearer " + accessToken).header("Accept", "application/json")
-                    .content(new StringContentProvider(requestData), contentType).timeout(10, TimeUnit.SECONDS).send();
-
-            logger.debug("Response: {}", response);
-            return response.getContentAsString();
-
-            // response = HttpUtil.executeUrl(method, url, headers, contentStream, contentType, 10000);
-        } catch (InterruptedException | TimeoutException | ExecutionException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            logger.debug("Error refreshing spotify web api token!", e);
-        }
-
-        return null;
     }
 
     /*
@@ -912,7 +955,7 @@ public class SpotifySession implements Runnable {
             private Integer discNumber;
             @SerializedName("duration_ms")
             @Expose
-            private Integer durationMs;
+            private Long durationMs;
             @SerializedName("explicit")
             @Expose
             private Boolean explicit;
@@ -979,11 +1022,11 @@ public class SpotifySession implements Runnable {
                 this.discNumber = discNumber;
             }
 
-            public Integer getDurationMs() {
+            public Long getDurationMs() {
                 return durationMs;
             }
 
-            public void setDurationMs(Integer durationMs) {
+            public void setDurationMs(Long durationMs) {
                 this.durationMs = durationMs;
             }
 

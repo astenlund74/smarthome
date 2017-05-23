@@ -42,6 +42,8 @@ public class SpotifyConnectBindingConstants {
     public static final String CHANNEL_PLAYED_TRACKPOPULARITY = "trackPopularity";
     public static final String CHANNEL_PLAYED_TRACKDURATION = "trackDuration";
     public static final String CHANNEL_PLAYED_TRACKPROGRESS = "trackProgress";
+    public static final String CHANNEL_PLAYED_TRACKDURATIONFMT = "trackDurationFmt";
+    public static final String CHANNEL_PLAYED_TRACKPROGRESSFMT = "trackProgressFmt";
 
     public static final String CHANNEL_PLAYED_ALBUMID = "albumId";
     public static final String CHANNEL_PLAYED_ALBUMURI = "albumUri";

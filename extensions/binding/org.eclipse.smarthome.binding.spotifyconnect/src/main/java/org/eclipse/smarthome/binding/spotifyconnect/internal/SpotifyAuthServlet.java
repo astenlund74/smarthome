@@ -72,9 +72,6 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
     final private Map<String, SpotifyConnectHandler> cookieHandler = new HashMap<String, SpotifyConnectHandler>();
     final String stateKey = "spotify_auth_state";
 
-    // the callback URL which is registered with Spotify App Redirect URL
-    final private String callbackUrl = "http://localhost:8080" + CALLBACK_ALIAS;
-
     /**
      * Sets the httpService from eclipse OSGI framework.
      *
@@ -122,6 +119,11 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         logger.debug("Spotify auth callback servlet received GET request {}.", req.getRequestURI());
 
+        final String scheme = req.getScheme();
+        final String host = req.getServerName();
+        final int port = req.getServerPort();
+        final String servletBaseURL = String.format("%s://%s:%d", scheme, host, port);
+
         final Map<String, String> queryStrs = splitQuery(req.getQueryString());
         final String url = req.getRequestURI();
 
@@ -165,7 +167,8 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
                 SpotifyConnectHandler authHandler = cookieHandler.get(state.getValue());
 
                 if (authHandler != null) {
-                    SpotifyWebAPIAuthResult result = authHandler.getSpotifySession().authenticate(callbackUrl, reqCode);
+                    SpotifyWebAPIAuthResult result = authHandler.getSpotifySession()
+                            .authenticate(servletBaseURL + CALLBACK_ALIAS, reqCode);
 
                     String clientId = (String) authHandler.getThing().getConfiguration().get("clientId");
                     String clientSecret = (String) authHandler.getThing().getConfiguration().get("clientSecret");
@@ -186,12 +189,7 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
                     wrout.println("<p>Validity: <b>" + result.getExpiresIn() + "</b> seconds</p>");
                     wrout.println("<p>Allowed scopes: <b>" + result.getScope() + "</b></p>");
 
-                    String scheme = req.getScheme();
-                    String host = req.getServerName();
-                    int port = req.getServerPort();
-
-                    wrout.println("<p><a href=\"" + scheme + "://" + host + ":" + port + SERVLET_NAME
-                            + "/\">Back to start page<a/></p>");
+                    wrout.println("<p><a href=\"" + servletBaseURL + SERVLET_NAME + "/\">Back to start page<a/></p>");
                     wrout.println("</body></html>");
                     wrout.flush();
 
@@ -256,7 +254,7 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
                 String clientId = (String) authHandler.getThing().getConfiguration().get("clientId");
 
                 String queryString = String.format("client_id=%s&response_type=code&redirect_uri=%s&state=%s&scope=%s",
-                        clientId, URLEncoder.encode(callbackUrl, "UTF-8"), stateValue, reqScope);
+                        clientId, URLEncoder.encode(servletBaseURL + CALLBACK_ALIAS, "UTF-8"), stateValue, reqScope);
 
                 resp.sendRedirect(String.format("https://accounts.spotify.com/authorize/?%s", queryString));
             } else {

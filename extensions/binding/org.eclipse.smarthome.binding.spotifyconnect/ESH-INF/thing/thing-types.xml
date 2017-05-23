@@ -32,6 +32,8 @@
             <channel id="trackPopularity" typeId="currentlyPlayedTrackPopularity"/>
             <channel id="trackDuration" typeId="currentlyPlayedTrackDuration"/>
             <channel id="trackProgress" typeId="currentlyPlayedTrackProgress"/>
+            <channel id="trackDurationFmt" typeId="currentlyPlayedTrackDurationFmt"/>
+            <channel id="trackProgressFmt" typeId="currentlyPlayedTrackProgressFmt"/>
 
             <channel id="albumId" typeId="currentlyPlayedAlbumId"/>
             <channel id="albumUri" typeId="currentlyPlayedAlbumUri"/>
@@ -166,13 +168,23 @@
     </channel-type>
     <channel-type id="currentlyPlayedTrackDuration">
         <item-type>Number</item-type>
-        <label>SpotifyConnect Track Duration</label>
-        <description>Channel for SpotifyConnect currently played track during (ms)</description>
+        <label>SpotifyConnect Track Duration ms</label>
+        <description>Channel for SpotifyConnect currently played track duration (ms)</description>
     </channel-type>
     <channel-type id="currentlyPlayedTrackProgress">
         <item-type>Number</item-type>
-        <label>SpotifyConnect Track Progress</label>
+        <label>SpotifyConnect Track Progress ms</label>
         <description>Channel for SpotifyConnect currently played track progress (ms)</description>
+    </channel-type>
+    <channel-type id="currentlyPlayedTrackDurationFmt">
+        <item-type>String</item-type>
+        <label>SpotifyConnect Track Duration Formatted</label>
+        <description>Channel for SpotifyConnect currently played track duration formatted (m:ss)</description>
+    </channel-type>
+    <channel-type id="currentlyPlayedTrackProgressFmt">
+        <item-type>String</item-type>
+        <label>SpotifyConnect Track Progress Formatted</label>
+        <description>Channel for SpotifyConnect currently played track progress formatted (m:ss)</description>
     </channel-type>
     <channel-type id="currentlyPlayedTrackNumber">
         <item-type>String</item-type>
@@ -186,34 +198,34 @@
     </channel-type>
     <channel-type id="currentlyPlayedTrackPopularity">
         <item-type>Number</item-type>
-        <label>SpotifyConnect Track Disc Popularity</label>
+        <label>SpotifyConnect Track Popularity</label>
         <description>Channel for SpotifyConnect currently played track popularity</description>
     </channel-type>
 
     
     <channel-type id="currentlyPlayedAlbumId">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track href</label>
+        <label>SpotifyConnect Album href</label>
         <description>Channel for SpotifyConnect currently played album href</description>
     </channel-type>
     <channel-type id="currentlyPlayedAlbumHref">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track href</label>
+        <label>SpotifyConnect Album href</label>
         <description>Channel for SpotifyConnect currently played album href</description>
     </channel-type>
     <channel-type id="currentlyPlayedAlbumUri">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track href</label>
+        <label>SpotifyConnect Album href</label>
         <description>Channel for SpotifyConnect currently played album Uri</description>
     </channel-type>
     <channel-type id="currentlyPlayedAlbumName">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track Name</label>
+        <label>SpotifyConnect Album Name</label>
         <description>Channel for SpotifyConnect currently played album name</description>
     </channel-type>    
     <channel-type id="currentlyPlayedAlbumType">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track Type</label>
+        <label>SpotifyConnect Album Type</label>
         <description>Channel for SpotifyConnect currently played album type</description>
     </channel-type>    
 
@@ -235,12 +247,12 @@
     </channel-type>
     <channel-type id="currentlyPlayedArtistName">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track Name</label>
+        <label>SpotifyConnect Artist Name</label>
         <description>Channel for SpotifyConnect currently played artist name</description>
     </channel-type>    
     <channel-type id="currentlyPlayedArtistType">
         <item-type>String</item-type>
-        <label>SpotifyConnect Track Name</label>
+        <label>SpotifyConnect Artist Name</label>
         <description>Channel for SpotifyConnect currently played artist type</description>
     </channel-type>    
  
@@ -267,7 +279,7 @@
         <category>Player</category>
     </channel-type>
     <channel-type id="deviceVolume">
-        <item-type>Number</item-type>
+        <item-type>Dimmer</item-type>
         <label>SpotifyConnect Device Volume</label>
         <description>Channel for SpotifyConnect currently playing device volume</description>
         <category>SoundVolume</category>

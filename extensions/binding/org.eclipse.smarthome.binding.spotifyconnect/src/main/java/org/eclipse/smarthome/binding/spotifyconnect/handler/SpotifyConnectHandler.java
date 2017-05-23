@@ -9,9 +9,11 @@ package org.eclipse.smarthome.binding.spotifyconnect.handler;
 
 import static org.eclipse.smarthome.binding.spotifyconnect.SpotifyConnectBindingConstants.*;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
@@ -32,6 +34,7 @@ import org.eclipse.smarthome.config.discovery.DiscoveryService;
 import org.eclipse.smarthome.core.library.types.DecimalType;
 import org.eclipse.smarthome.core.library.types.NextPreviousType;
 import org.eclipse.smarthome.core.library.types.OnOffType;
+import org.eclipse.smarthome.core.library.types.PercentType;
 import org.eclipse.smarthome.core.library.types.PlayPauseType;
 import org.eclipse.smarthome.core.library.types.StringType;
 import org.eclipse.smarthome.core.thing.Bridge;
@@ -143,21 +146,40 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
                 if (command instanceof PlayPauseType) {
                     if (command.equals(PlayPauseType.PLAY)) {
                         spotifySession.playActiveTrack();
+                        setChannelValue(CHANNEL_TRACKPLAYER, PlayPauseType.PLAY);
                     } else if (command.equals(PlayPauseType.PAUSE)) {
                         spotifySession.pauseActiveTrack();
+                        setChannelValue(CHANNEL_TRACKPLAYER, PlayPauseType.PAUSE);
                     }
                 }
                 if (command instanceof OnOffType) {
                     if (command.equals(OnOffType.ON)) {
                         spotifySession.playActiveTrack();
+                        setChannelValue(CHANNEL_TRACKPLAYER, PlayPauseType.PLAY);
                     } else if (command.equals(OnOffType.OFF)) {
                         spotifySession.pauseActiveTrack();
+                        setChannelValue(CHANNEL_TRACKPLAYER, PlayPauseType.PAUSE);
                     }
                 }
                 if (command instanceof NextPreviousType) {
                     if (command.equals(NextPreviousType.NEXT)) {
                         spotifySession.playActiveTrack();
                     } else if (command.equals(NextPreviousType.PREVIOUS)) {
+                        spotifySession.previousTrack();
+                    }
+
+                }
+                if (command instanceof StringType) {
+                    String cmd = ((StringType) command).toString();
+                    if (cmd.equalsIgnoreCase("play")) {
+                        spotifySession.playActiveTrack();
+                        setChannelValue(CHANNEL_TRACKPLAYER, PlayPauseType.PLAY);
+                    } else if (cmd.equalsIgnoreCase("pause")) {
+                        spotifySession.pauseActiveTrack();
+                        setChannelValue(CHANNEL_TRACKPLAYER, PlayPauseType.PAUSE);
+                    } else if (cmd.equalsIgnoreCase("next")) {
+                        spotifySession.nextTrack();
+                    } else if (cmd.equalsIgnoreCase("prev") || cmd.equalsIgnoreCase("previous")) {
                         spotifySession.previousTrack();
                     }
 
@@ -170,8 +192,13 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
                 break;
             case CHANNEL_DEVICEVOLUME:
                 if (command instanceof DecimalType) {
-                    DecimalType volume = (DecimalType) command;
+                    PercentType volume = new PercentType(((DecimalType) command).intValue());
                     spotifySession.setVolume(volume.intValue());
+                    setChannelValue(CHANNEL_DEVICEVOLUME, volume);
+                } else if (command instanceof PercentType) {
+                    PercentType volume = (PercentType) command;
+                    spotifySession.setVolume(volume.intValue());
+                    setChannelValue(CHANNEL_DEVICEVOLUME, volume);
                 }
                 break;
         }
@@ -247,6 +274,8 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
                 // No reason to query Spotify for device and player status if we don't have any devices configured.
                 if (knownDevices.size() > 0) {
 
+                    // TODO: decide on whether to add automatic discovery of devices not configured as things here and
+                    // get rid of discovery implementation.
                     List<SpotifySession.SpotifyWebAPIDeviceList.Device> spotifyDevices = spotifySession.listDevices();
                     for (SpotifySession.SpotifyWebAPIDeviceList.Device device : spotifyDevices) {
                         if (knownDevices.containsKey(device.getId())) {
@@ -261,7 +290,7 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
                             // handler.setChannelValue(CHANNEL_DEVICEID, new StringType(device.getId()));
                             handler.setChannelValue(CHANNEL_DEVICENAME, new StringType(device.getName()));
                             handler.setChannelValue(CHANNEL_DEVICETYPE, new StringType(device.getType()));
-                            handler.setChannelValue(CHANNEL_DEVICEVOLUME, new DecimalType(device.getVolumePercent()));
+                            handler.setChannelValue(CHANNEL_DEVICEVOLUME, new PercentType(device.getVolumePercent()));
                             handler.setChannelValue(CHANNEL_DEVICEACTIVE,
                                     device.getIsActive() ? OnOffType.ON : OnOffType.OFF);
                         }
@@ -292,21 +321,32 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
                             playerInfo.getIsPlaying() ? PlayPauseType.PLAY : PlayPauseType.PAUSE);
                     setChannelValue(CHANNEL_TRACKSHUFFLE, playerInfo.getShuffleState() ? OnOffType.ON : OnOffType.OFF);
                     setChannelValue(CHANNEL_TRACKREPEAT, new StringType(playerInfo.getRepeatState()));
-                    setChannelValue(CHANNEL_PLAYED_TRACKPROGRESS, new DecimalType(playerInfo.getProgressMs()));
 
+                    Long progress = playerInfo.getProgressMs();
+                    Long duration = playerInfo.getItem().getDurationMs();
+                    setChannelValue(CHANNEL_PLAYED_TRACKPROGRESS, new DecimalType(progress));
+                    setChannelValue(CHANNEL_PLAYED_TRACKDURATION, new DecimalType(duration));
+
+                    try {
+                        SimpleDateFormat fmt = new SimpleDateFormat("m:ss");
+                        String progressFmt = fmt.format(new Date(progress));
+                        String durationFmt = fmt.format(new Date(duration));
+                        setChannelValue(CHANNEL_PLAYED_TRACKPROGRESSFMT, new StringType(progressFmt));
+                        setChannelValue(CHANNEL_PLAYED_TRACKDURATIONFMT, new StringType(durationFmt));
+                    } catch (Exception ex) {
+                        logger.error("Exception while formatting duration and progress", ex);
+                    }
                     setChannelValue(CHANNEL_PLAYED_TRACKID, new StringType(playerInfo.getItem().getId()));
                     setChannelValue(CHANNEL_PLAYED_TRACKHREF, new StringType(playerInfo.getItem().getHref()));
                     setChannelValue(CHANNEL_PLAYED_TRACKURI, new StringType(playerInfo.getItem().getUri()));
                     setChannelValue(CHANNEL_PLAYED_TRACKNAME, new StringType(playerInfo.getItem().getName()));
                     setChannelValue(CHANNEL_PLAYED_TRACKTYPE, new StringType(playerInfo.getItem().getType()));
-                    setChannelValue(CHANNEL_PLAYED_TRACKDURATION,
-                            new DecimalType(playerInfo.getItem().getDurationMs()));
                     setChannelValue(CHANNEL_PLAYED_TRACKNUMBER,
                             new StringType(playerInfo.getItem().getTrackNumber().toString()));
                     setChannelValue(CHANNEL_PLAYED_TRACKDISCNUMBER,
                             new StringType(playerInfo.getItem().getDiscNumber().toString()));
                     setChannelValue(CHANNEL_PLAYED_TRACKPOPULARITY,
-                            new StringType(playerInfo.getItem().getPopularity().toString()));
+                            new DecimalType(playerInfo.getItem().getPopularity()));
 
                     setChannelValue(CHANNEL_PLAYED_ALBUMID, new StringType(playerInfo.getItem().getAlbum().getId()));
                     setChannelValue(CHANNEL_PLAYED_ALBUMHREF,
@@ -344,7 +384,7 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
 
                     if (playerInfo.getDevice().getVolumePercent() != null) {
                         setChannelValue(CHANNEL_DEVICEVOLUME,
-                                new DecimalType(playerInfo.getDevice().getVolumePercent()));
+                                new PercentType(playerInfo.getDevice().getVolumePercent()));
                     }
 
                 } else {

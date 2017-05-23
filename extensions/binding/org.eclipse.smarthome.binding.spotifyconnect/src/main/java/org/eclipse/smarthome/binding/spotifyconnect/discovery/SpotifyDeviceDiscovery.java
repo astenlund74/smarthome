@@ -36,7 +36,8 @@ public class SpotifyDeviceDiscovery extends AbstractDiscoveryService {
     private final static Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Collections
             .singleton(SpotifyConnectBindingConstants.THING_TYPE_DEVICE);
 
-    private final static int DISCOVERY_TIME_SECONDS = 30;
+    // the call to listDevices is fast - no continuous polling implemented yet
+    private final static int DISCOVERY_TIME_SECONDS = 3;
 
     private SpotifyConnectHandler player = null;
 
