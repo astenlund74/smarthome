@@ -25,18 +25,24 @@ import org.eclipse.smarthome.core.thing.ThingUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The {@link SpotifyDeviceDiscovery} queries the Spotify WebAPI for available devices.
+ *
+ * @author Andreas Stenlund - Initial contribution
+ */
 public class SpotifyDeviceDiscovery extends AbstractDiscoveryService {
     private static final Logger logger = LoggerFactory.getLogger(SpotifyDeviceDiscovery.class);
 
     private final static Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Collections
             .singleton(SpotifyConnectBindingConstants.THING_TYPE_DEVICE);
-    private final static int DISCOVERY_TIME_SECONDS = 5;
 
-    private SpotifyConnectHandler coordinatorHandler = null;
+    private final static int DISCOVERY_TIME_SECONDS = 30;
+
+    private SpotifyConnectHandler player = null;
 
     public SpotifyDeviceDiscovery(SpotifyConnectHandler coordinatorHandler) {
         super(SUPPORTED_THING_TYPES_UIDS, DISCOVERY_TIME_SECONDS);
-        this.coordinatorHandler = coordinatorHandler;
+        this.player = coordinatorHandler;
     }
 
     @Override
@@ -48,7 +54,7 @@ public class SpotifyDeviceDiscovery extends AbstractDiscoveryService {
     protected void startScan() {
         logger.debug("Starting Spotify Device discovery !");
 
-        List<SpotifyWebAPIDeviceList.Device> spotifyDevices = coordinatorHandler.getSpotifySession().listDevices();
+        List<SpotifyWebAPIDeviceList.Device> spotifyDevices = player.getSpotifySession().listDevices();
 
         if (spotifyDevices.size() > 0) {
             for (SpotifySession.SpotifyWebAPIDeviceList.Device device : spotifyDevices) {
@@ -62,11 +68,11 @@ public class SpotifyDeviceDiscovery extends AbstractDiscoveryService {
                 devConf.put("volumePercent", device.getVolumePercent());
 
                 ThingUID thing = new ThingUID(SpotifyConnectBindingConstants.THING_TYPE_DEVICE,
-                        coordinatorHandler.getThing().getUID(), device.getId());
+                        player.getThing().getUID(), device.getId());
 
                 DiscoveryResult discoveryResult = DiscoveryResultBuilder.create(thing)
-                        .withBridge(coordinatorHandler.getThing().getUID()).withProperties(devConf)
-                        .withLabel(device.getName()).build();
+                        .withBridge(player.getThing().getUID()).withProperties(devConf).withLabel(device.getName())
+                        .build();
 
                 thingDiscovered(discoveryResult);
             }

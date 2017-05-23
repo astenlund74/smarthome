@@ -8,7 +8,6 @@
 package org.eclipse.smarthome.binding.spotifyconnect.internal;
 
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -33,6 +32,13 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
+/**
+ * The {@link SpotifySession} maintains an active session with Spotify WebAPI.
+ * The refreshToken is used to retrieve an accessToken which is used through its validity time.
+ * The class also provides wrappers for various API calls.
+ *
+ * @author Andreas Stenlund - Initial contribution
+ */
 public class SpotifySession implements Runnable {
 
     private final Logger logger = LoggerFactory.getLogger(SpotifySession.class);
@@ -42,22 +48,20 @@ public class SpotifySession implements Runnable {
 
     // Instantiate HttpClient with the SslContextFactory
     private HttpClient httpClient = new HttpClient(sslContextFactory);
-    private static HashMap<SpotifyConnectHandler, SpotifySession> playerSession = new HashMap<>();
 
     private String clientId = null;
     private String clientSecret = null;
     private String refreshToken = null;
-
-    private SpotifyConnectHandler spotifyPlayer = null;
     private String accessToken = null;
     private int tokenValidity = 3600;
+
+    private SpotifyConnectHandler spotifyPlayer = null;
     ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(5);
 
     @SuppressWarnings({ "rawtypes" })
     private ScheduledFuture future = null;
 
-    private SpotifySession(SpotifyConnectHandler spotifyPlayer, String clientId, String clientSecret,
-            String refreshToken) {
+    private SpotifySession(String clientId, String clientSecret, String refreshToken) {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.refreshToken = refreshToken;
@@ -73,14 +77,9 @@ public class SpotifySession implements Runnable {
         }
     }
 
-    public static SpotifySession getInstance(SpotifyConnectHandler spotifyPlayer, String clientId, String clientSecret,
-            String refreshToken) {
-        // TODO: reinitiatlize session!
-        if (playerSession.containsKey(spotifyPlayer)) {
-            return playerSession.get(spotifyPlayer);
-        }
+    public static SpotifySession getInstance(String clientId, String clientSecret, String refreshToken) {
 
-        SpotifySession session = new SpotifySession(spotifyPlayer, clientId, clientSecret, refreshToken);
+        SpotifySession session = new SpotifySession(clientId, clientSecret, refreshToken);
         return session;
     }
 
@@ -101,9 +100,15 @@ public class SpotifySession implements Runnable {
         // }
         // }
 
-        // TODO: remove session from playerSession hashtable
     }
 
+    /**
+     * Call the Spotify WebAPI to perform step 7 in the authorization flow.
+     *
+     * @param callbackUrl
+     * @param reqCode
+     * @return
+     */
     public SpotifyWebAPIAuthResult authenticate(String callbackUrl, String reqCode) {
 
         final String authString = Base64.getEncoder()
@@ -117,15 +122,10 @@ public class SpotifySession implements Runnable {
 
         ContentResponse response = null;
         try {
-            String url = "https://accounts.spotify.com/api/token";
-            // String url = "http://localhost:8081/api/token";
-            response = httpClient.POST(url).header("Authorization", "Basic " + authString)
-                    .content(new StringContentProvider(content), contentType).timeout(10, TimeUnit.SECONDS).send();
 
-            // Properties headers = new Properties();
-            // headers.setProperty("Authorization", "Basic " + authString);
-            // ByteArrayInputStream contentStream = new ByteArrayInputStream(content.getBytes());
-            // String oldResp = HttpUtil.executeUrl("POST", url, headers, contentStream, contentType, 5000);
+            response = httpClient.POST("https://accounts.spotify.com/api/token")
+                    .header("Authorization", "Basic " + authString)
+                    .content(new StringContentProvider(content), contentType).timeout(10, TimeUnit.SECONDS).send();
 
             logger.debug("Response: {}", response.getContentAsString());
 
@@ -143,6 +143,12 @@ public class SpotifySession implements Runnable {
         return null;
     }
 
+    /**
+     * Call WebAPI to get accessToken using the refreshToken.
+     *
+     * This is step 7 of the Spotify WebAPI authorization flow
+     * See https://developer.spotify.com/web-api/authorization-guide/#authorization-code-flow
+     */
     private void refreshToken() {
         final String authString = Base64.getEncoder()
                 .encodeToString(String.format("%s:%s", clientId, clientSecret).getBytes());
@@ -173,12 +179,18 @@ public class SpotifySession implements Runnable {
         }
     }
 
+    /**
+     * Schedule timely refreshes of the accessToken.
+     *
+     * @return false if refresh is not successful
+     */
     public boolean scheduleAccessTokenRefresh() {
+
         if (future != null && !future.isCancelled()) {
+            // stop previous refresh thread
             future.cancel(true);
         }
-        // TODO: Find a more suitable to retrieve token validity if it changes after being scheduled? Scheduling refresh
-        // 10 seconds before expiring.
+
         try {
             refreshToken();
         } catch (java.lang.NullPointerException npe) {
@@ -189,6 +201,8 @@ public class SpotifySession implements Runnable {
             return false;
         }
 
+        // TODO: Find a more suitable to retrieve token validity if it changes after being scheduled? Scheduling refresh
+        // 10 seconds before expiring.
         tokenValidity -= 10;
         future = scheduledExecutorService.scheduleAtFixedRate(this, tokenValidity, tokenValidity, TimeUnit.SECONDS);
 
@@ -200,10 +214,6 @@ public class SpotifySession implements Runnable {
         spotifyPlayer.setChannelValue(SpotifyConnectBindingConstants.CHANNEL_REFRESHTOKEN, OnOffType.ON);
         refreshToken();
         spotifyPlayer.setChannelValue(SpotifyConnectBindingConstants.CHANNEL_REFRESHTOKEN, OnOffType.OFF);
-    }
-
-    public String getAccessToken() {
-        return accessToken;
     }
 
     /*
@@ -339,6 +349,10 @@ public class SpotifySession implements Runnable {
 
         return null;
     }
+
+    /*
+     * Inner classes used to parse JSON data
+     */
 
     /**
      * This class and its inner classes represents the SpotifyWebAPI response of an authorization request

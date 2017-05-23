@@ -9,6 +9,12 @@ package org.eclipse.smarthome.binding.spotifyconnect.internal;
 
 import org.eclipse.smarthome.binding.spotifyconnect.handler.SpotifyConnectHandler;
 
+/**
+ * The {@link SpotifyAuthService} is used to register {@link SpotifyConnectHandler} for authorization with Spotify Web
+ * API
+ *
+ * @author Andreas Stenlund - Initial contribution
+ */
 public interface SpotifyAuthService {
 
     public void authenticateSpotifyPlayer(SpotifyConnectHandler handler);

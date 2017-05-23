@@ -14,7 +14,6 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
@@ -27,7 +26,6 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.smarthome.binding.spotifyconnect.handler.SpotifyConnectHandler;
 import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifySession.SpotifyWebAPIAuthResult;
-import org.eclipse.smarthome.core.thing.ThingRegistry;
 import org.osgi.service.http.HttpContext;
 import org.osgi.service.http.HttpService;
 import org.osgi.service.http.NamespaceException;
@@ -38,6 +36,13 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
+/**
+ *
+ * The {@link SpotifyAuthServlet} manages the authorization with the Spotify Web API. The servlet implements the
+ * Authorization Code flow and saves the resulting refreshToken with the bridge.
+ *
+ * @author Andreas Stenlund - Initial contribution
+ */
 public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthService {
 
     /**
@@ -51,30 +56,38 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
 
     private final Logger logger = LoggerFactory.getLogger(SpotifyAuthServlet.class);
 
+    // TODO: clean up required scopes, currently all which is unnecessary
     private String[] scopes = new String[] { "playlist-read-private", "playlist-read-collaborative",
             "playlist-modify-public", "playlist-modify-private streaming", "user-follow-modify", "user-follow-read",
             "user-library-read", "user-library-modify", "user-read-private", "user-read-birthdate", "user-read-email",
             "user-top-read", "user-read-playback-state", "user-read-recently-played", "user-modify-playback-state",
             "user-read-currently-playing" };
 
-    private ThingRegistry thingRegistry;
-    protected HttpService httpService;
-    protected List<SpotifyConnectHandler> handlers = new ArrayList<SpotifyConnectHandler>();
-    protected Map<String, SpotifyConnectHandler> cookieHandler = new HashMap<String, SpotifyConnectHandler>();
+    private HttpService httpService;
 
-    private String callbackUrl = "http://localhost:8080" + CALLBACK_ALIAS;
+    // keep track of handler that require authentication.
+    final private List<SpotifyConnectHandler> handlers = new ArrayList<SpotifyConnectHandler>();
 
+    // keep track of session cookies and related handler - the cookie state value is used in authentication flow
+    final private Map<String, SpotifyConnectHandler> cookieHandler = new HashMap<String, SpotifyConnectHandler>();
     final String stateKey = "spotify_auth_state";
 
+    // the callback URL which is registered with Spotify App Redirect URL
+    final private String callbackUrl = "http://localhost:8080" + CALLBACK_ALIAS;
+
+    /**
+     * Sets the httpService from eclipse OSGI framework.
+     *
+     * @param httpService the shared http service
+     */
     protected void setHttpService(HttpService httpService) {
         this.httpService = httpService;
 
         try {
             logger.debug("Starting up the spotify auth callback servlet at " + SERVLET_NAME);
-            Hashtable<String, String> props = new Hashtable<String, String>();
-            httpService.registerServlet(SERVLET_NAME, this, props, createHttpContext());
-            httpService.registerResources(WEBAPP_ALIAS, "web", null);
 
+            httpService.registerServlet(SERVLET_NAME, this, null, createHttpContext());
+            httpService.registerResources(WEBAPP_ALIAS, "web", null);
         } catch (NamespaceException e) {
             logger.error("Error during servlet startup", e);
         } catch (ServletException e) {
@@ -82,6 +95,11 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         }
     }
 
+    /**
+     * Unset the httpService from eclipse OSGI framework.
+     *
+     * @param httpService the shared http service
+     */
     protected void unsetHttpService(HttpService httpService) {
         httpService.unregister(SERVLET_NAME);
         this.httpService = null;
@@ -97,6 +115,9 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         return httpContext;
     }
 
+    /*
+     * This is method provides the Authorization Code flow
+     */
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         logger.debug("Spotify auth callback servlet received GET request {}.", req.getRequestURI());
@@ -105,12 +126,19 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         final String url = req.getRequestURI();
 
         if (url.startsWith(WEBAPP_ALIAS)) {
+            // let base Servlet implementation manage file request
             super.doGet(req, resp);
+
         } else if (url.equals(SERVLET_NAME + "/")) {
+            // help finding the index page as default
             String indexPage = WEBAPP_ALIAS + "/index.html";
             RequestDispatcher dispatcher = getServletContext().getRequestDispatcher(indexPage);
             dispatcher.forward(req, resp);
+
         } else if (url.equals(CALLBACK_ALIAS)) {
+            // this entry point is for step 3 of the authorization flow
+            // See https://developer.spotify.com/web-api/authorization-guide/#authorization-code-flow
+
             logger.debug("Spotify auth callback servlet received GET /authorize request.");
 
             final String reqCode = queryStrs.get("code");
@@ -145,6 +173,7 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
                     resp.setCharacterEncoding("UTF-8");
                     resp.setStatus(200);
 
+                    // TODO: replace with prettier solution...
                     PrintWriter wrout = resp.getWriter();
                     wrout.println(
                             "<html><head><title>Authenticated: Eclipse Smarthome Spotify Connect Bridge</title></head><body>");
@@ -177,8 +206,11 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
 
             }
         } else if (url.equals(SERVLET_NAME + "/list")) {
+            // this entry point is provided for index.html to retrieve the bridge(s) to authorize.
             logger.debug("Spotify auth callback servlet received GET /list request");
+
             List<Player> players = new ArrayList<Player>();
+
             for (SpotifyConnectHandler handler : handlers) {
                 Player player = new Player();
                 player.setId(handler.getThing().getUID().getAsString());
@@ -186,12 +218,17 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
                 player.setClientId((String) handler.getThing().getConfiguration().get("clientId"));
                 players.add(player);
             }
+
             Gson gson = new Gson();
             PrintWriter wrout = resp.getWriter();
             wrout.println(gson.toJson(players));
 
         } else if (url.equals(SERVLET_NAME + "/login")) {
-            String spotifyHandlerId = req.getParameter("playerId");
+            // this entry point is for step 1 of the authorization flow
+            // See https://developer.spotify.com/web-api/authorization-guide/#authorization-code-flow
+
+            // expects the thing uid of a Spotify bridge
+            final String spotifyHandlerId = req.getParameter("playerId");
 
             logger.debug("Spotify auth callback servlet received GET /login request for {}.", spotifyHandlerId);
 
@@ -231,6 +268,9 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         }
     }
 
+    /*
+     * Direct conversion from Spotify node.js example implementation. Smarter alternatives?
+     */
     private static String generateRandomStateString(int length) {
         String state = new String();
         String possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -241,6 +281,9 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         return state;
     }
 
+    /*
+     * Are there no standard utility functions for this?
+     */
     public static Map<String, String> splitQuery(String query) throws UnsupportedEncodingException {
         final Map<String, String> keyVals = new HashMap<String, String>();
         if (query != null) {
@@ -257,25 +300,15 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        logger.debug("Spotify auth callback servlet received POST request.");
-    }
-
-    @Override
     public void authenticateSpotifyPlayer(SpotifyConnectHandler handler) {
         if (!handlers.contains(handler)) {
             handlers.add(handler);
         }
     }
 
-    protected void setThingRegistry(ThingRegistry thingRegistry) {
-        this.thingRegistry = thingRegistry;
-    }
-
-    protected void unsetThingRegistry(ThingRegistry thingRegistry) {
-        this.thingRegistry = null;
-    }
-
+    /**
+     * Inner class used to serialize data to JSON
+     */
     public class Player {
         @SerializedName("id")
         @Expose
@@ -310,21 +343,5 @@ public class SpotifyAuthServlet extends HttpServlet implements SpotifyAuthServic
         public void setClientId(String clientId) {
             this.clientId = clientId;
         }
-    }
-
-    public class Players {
-
-        @SerializedName("player")
-        @Expose
-        private List<Player> players = null;
-
-        public List<Player> getPlayers() {
-            return players;
-        }
-
-        public void setPlayers(List<Player> players) {
-            this.players = players;
-        }
-
     }
 }

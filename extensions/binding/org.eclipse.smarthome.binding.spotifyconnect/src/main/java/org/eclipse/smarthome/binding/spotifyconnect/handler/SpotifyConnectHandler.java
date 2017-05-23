@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import org.eclipse.smarthome.binding.spotifyconnect.discovery.SpotifyDeviceDiscovery;
 import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifyAuthService;
 import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifyConnectHandlerFactory;
-import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifyPlayer;
 import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifySession;
 import org.eclipse.smarthome.binding.spotifyconnect.internal.SpotifySession.SpotifyWebAPIPlayerInfo;
 import org.eclipse.smarthome.config.core.Configuration;
@@ -49,7 +48,12 @@ import org.osgi.framework.ServiceRegistration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SpotifyConnectHandler extends ConfigStatusBridgeHandler implements SpotifyPlayer {
+/**
+ * The {@link SpotifyConnectHandler} is the main class to manage Spotify WebAPI connection and update status of things.
+ *
+ * @author Andreas Stenlund - Initial contribution
+ */
+public class SpotifyConnectHandler extends ConfigStatusBridgeHandler {
 
     private Logger logger = LoggerFactory.getLogger(SpotifyConnectHandler.class);
 
@@ -198,16 +202,16 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler implements 
         Configuration conf = getConfig();
         pollingInterval = ((java.math.BigDecimal) conf.get("refreshPeriod")).intValueExact();
 
-        String clientId = (String) conf.get("clientId");
-        String clientSecret = (String) conf.get("clientSecret");
-        String refreshToken = (String) conf.get("refreshToken");
+        final String clientId = (String) conf.get("clientId");
+        final String clientSecret = (String) conf.get("clientSecret");
+        final String refreshToken = (String) conf.get("refreshToken");
 
         if (handlerFactory != null) {
             authService = handlerFactory.getSpotifyAuthService();
         }
 
         if (getConfig().get("clientId") != null) {
-            setSpotifySession(SpotifySession.getInstance(this, clientId, clientSecret, refreshToken));
+            setSpotifySession(SpotifySession.getInstance(clientId, clientSecret, refreshToken));
         } else {
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.OFFLINE.CONFIGURATION_ERROR,
                     "Cannot connect to Spotify Web API - client parameters not set.");
@@ -379,7 +383,7 @@ public class SpotifyConnectHandler extends ConfigStatusBridgeHandler implements 
         configuration.put("refreshToken", refreshToken);
         updateConfiguration(configuration);
 
-        SpotifySession newSession = SpotifySession.getInstance(this, clientId, clientSecret, refreshToken);
+        SpotifySession newSession = SpotifySession.getInstance(clientId, clientSecret, refreshToken);
         setSpotifySession(newSession);
 
     }
